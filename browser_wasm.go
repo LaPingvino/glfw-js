@@ -119,14 +119,14 @@ func CreateWindow(_, _ int, title string, monitor *Monitor, share *Window) (*Win
 
 	addGlobalEventListener.Invoke("focus", newJsFuncFrom(func(this js.Value, args []js.Value) any {
 		if w.focusCallback != nil {
-			w.focusCallback(w, true)
+			go w.focusCallback(w, true)
 		}
 		return nil
 	}))
 
 	addGlobalEventListener.Invoke("blur", newJsFuncFrom(func(this js.Value, args []js.Value) any {
 		if w.focusCallback != nil {
-			w.focusCallback(w, false)
+			go w.focusCallback(w, false)
 		}
 		return nil
 	}))
