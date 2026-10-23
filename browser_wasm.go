@@ -176,8 +176,7 @@ func CreateWindow(_, _ int, title string, monitor *Monitor, share *Window) (*Win
 
 		if w.charCallback != nil && mods < 2 {
 			keyStr := ke.Get("key").String()
-			if len(keyStr) == 1 {
-				keyRune := []rune(keyStr)
+			if keyRune := []rune(keyStr); len(keyRune) == 1 { // one character: é and ж are two bytes
 				go w.charCallback(w, keyRune[0])
 			}
 		}
