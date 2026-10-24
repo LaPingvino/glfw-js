@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"runtime"
 	"sync"
@@ -332,38 +333,49 @@ func CreateWindow(_, _ int, title string, monitor *Monitor, share *Window) (*Win
 		return nil
 	}))
 
-	/*
-		// Hacky mouse-emulation-via-touch.
-		touchHandler := func(event dom.Event) {
-			w.goFullscreenIfRequested()
-
-			te := event.(*dom.TouchEvent)
-
-			touches := te.Get("touches")
-			if touches.Length() > 0 {
-				t := touches.Index(0)
-
-				if w.touches != nil && w.touches.Length() > 0 { // This event is a movement only if we previously had > 0 touch points.
-					if w.mouseMovementCallback != nil {
-						x, y := t.Get("clientX").Float(), t.Get("clientY").Float()
-						dx, dy := x-w.cursorPos[0], y-w.cursorPos[1]
-						w.post(func() { w.mouseMovementCallback(w, x, y, dx, dy) })
-					}
-				}
-
-				w.cursorPos[0], w.cursorPos[1] = t.Get("clientX").Float(), t.Get("clientY").Float()
-				if w.cursorPosCallback != nil {
-					x, y := w.cursorPos[0], w.cursorPos[1]
-					w.post(func() { w.cursorPosCallback(w, x, y) })
-				}
+	// a finger dragged scrolls what is under it; a tap reaches the window
+	// as the mouse click the browser makes of it
+	var touchX, touchY float64
+	addDocumentEventListener.Invoke("touchstart", newJsFuncFrom(func(this js.Value, args []js.Value) any {
+		t := args[0].Get("touches").Index(0)
+		touchX, touchY = t.Get("clientX").Float(), t.Get("clientY").Float()
+		return nil
+	}))
+	addDocumentEventListener.Invoke("touchmove", newJsFuncFrom(func(this js.Value, args []js.Value) any {
+		te := args[0]
+		if touches := te.Get("touches"); touches.Length() == 1 && w.scrollCallback != nil {
+			t := touches.Index(0)
+			x, y := t.Get("clientX").Float(), t.Get("clientY").Float()
+			// in steps of at least 10 pixels, halved: Fyne speeds up wheel
+			// steps of 5 or more twofold, so what scrolls follows the finger
+			dx, dy := x-touchX, y-touchY
+			if math.Abs(dx) < 10 {
+				dx = 0
+			} else {
+				touchX = x
 			}
-			w.touches = touches
-
-			te.PreventDefault()
+			if math.Abs(dy) < 10 {
+				dy = 0
+			} else {
+				touchY = y
+			}
+			if dx == 0 && dy == 0 {
+				te.Call("preventDefault")
+				return nil
+			}
+			dx, dy = dx/2, dy/2
+			w.cursorPos[0], w.cursorPos[1] = x*w.devicePixelRatio, y*w.devicePixelRatio
+			cx, cy := w.cursorPos[0], w.cursorPos[1]
+			w.post(func() {
+				if w.cursorPosCallback != nil {
+					w.cursorPosCallback(w, cx, cy)
+				}
+				w.scrollCallback(w, dx, dy)
+			})
 		}
-		document.AddEventListener("touchstart", false, touchHandler)
-		document.AddEventListener("touchmove", false, touchHandler)
-		document.AddEventListener("touchend", false, touchHandler)*/
+		te.Call("preventDefault")
+		return nil
+	}), map[string]any{"passive": false})
 
 	addDocumentEventListener.Invoke("beforeUnload", newJsFuncFrom(func(this js.Value, args []js.Value) any {
 		if w.closeCallback != nil {
